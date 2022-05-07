@@ -165,7 +165,7 @@ if st.sidebar.button('Backtest!'):
         if len(test) > 0:
             
             # Train model
-            model = RandomForestRegressor()
+            model = LinearRegression()
             
             
             model.fit(train[['rsi_lag1']],train['change'])
