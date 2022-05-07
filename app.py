@@ -151,6 +151,7 @@ if st.sidebar.button('Backtest!'):
     
     df['rsi'] = ta.rsi(df['close'],length=14)
     df['rsi_lag1'] = df.rsi.shift(1)
+    df['below30'] = np.where(df.rsi_lag1 < 30,1,0)
     df['change'] = (df.close - df.close.shift(1))/df.close.shift(1) 
     df = df.dropna(subset=['rsi_lag1','close','change'])
 
@@ -168,7 +169,7 @@ if st.sidebar.button('Backtest!'):
             model = LinearRegression()
             
             
-            model.fit(train[['rsi_lag1']],train['change'])
+            model.fit(train[['below30']],train['change'])
         
             df_predict = pd.DataFrame(test.iloc[0])
             df_predict = df_predict.transpose()
