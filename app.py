@@ -10,7 +10,7 @@ import streamlit as st
 import pandas as pd
 import pandas_ta as ta
 import numpy as np
-import polygon
+from polygon import RESTClient
 import datetime 
 from datetime import date
 from requests.adapters import HTTPAdapter
@@ -19,7 +19,7 @@ from sklearn.linear_model import LinearRegression
 
 markets = ['crypto', 'stocks', 'fx']
 
-class MyRESTClient(polygon.RESTClient):
+class MyRESTClient(RESTClient):
     def __init__(self, auth_key: str='xv1hEAplCjSiahoU11LP5ivLG8voopm4', timeout:int=5):
         super().__init__(auth_key)
         retry_strategy = Retry(total=10,
