@@ -3,6 +3,7 @@ pandas
 pandas_ta
 numpy
 polygon
+polygon-api-client
 datetime
 requests
 urllib3
