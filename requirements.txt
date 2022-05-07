@@ -8,4 +8,4 @@ datetime
 requests
 urllib3
 sklearn
-tqdm
+stqdm
