@@ -10,7 +10,7 @@ import streamlit as st
 import pandas as pd
 import pandas_ta as ta
 import numpy as np
-from polygon import RESTClient
+from polygon.rest.client import RESTClient
 import datetime 
 from datetime import date
 from requests.adapters import HTTPAdapter
