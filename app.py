@@ -16,6 +16,8 @@ from datetime import date
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
+from stqdm import stqdm
 
 markets = ['crypto', 'stocks', 'fx']
 
@@ -138,3 +140,47 @@ if st.sidebar.button('Predict!'):
     df_predict = df_predict.transpose()
     prediction = model.predict(df_predict[['rsi']])[0]
     st.write('Predicted change in close price next minute from last: ',(prediction*100).round(3),'%')
+
+test_start = st.sidebar.date_input('Start of backtest data: ', date(2022,2,1))
+
+
+
+if st.sidebar.button('Backtest!'):
+    
+    df = client.get_bars(market=market, ticker=ticker, from_=start_date)
+    
+    df['rsi'] = ta.rsi(df['close'],length=14)
+    df['rsi_lag1'] = df.rsi.shift(1)
+    df['change'] = (df.close - df.close.shift(1))/df.close.shift(1) 
+    df = df.dropna(subset=['rsi_lag1','close','change'])
+
+    results = pd.DataFrame()
+    
+    for t in stqdm(range(len(df[(df.date>=pd.Timestamp(test_start))]))):
+    
+        train = df[df.date < pd.Timestamp(test_start) + pd.DateOffset(minutes=t)]
+    
+        test = df[df.date == pd.Timestamp(test_start) + pd.DateOffset(minutes=t)]
+        
+        if len(test) > 0:
+            
+            # Train model
+            model = RandomForestRegressor()
+            
+            
+            model.fit(train[['rsi_lag1']],train['change'])
+        
+            df_predict = pd.DataFrame(test.iloc[0])
+            df_predict = df_predict.transpose()
+            test['prediction'] = model.predict(df_predict[['rsi']])[0]
+            results = pd.concat([results,test])
+            
+    results['growth_rate'] = np.where(results.prediction >= .0033333, results.change,0)
+    results['multiplier'] = results.growth_rate + 1
+    
+    pv = 100
+    for i in range(len(results)):
+        pv = pv*results.multiplier.iloc[i]
+    
+    
+    st.write('Value of $100 invested with this strategy from ',test_start, ' to present: $',round(pv,2))
