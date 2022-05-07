@@ -183,4 +183,4 @@ if st.sidebar.button('Backtest!'):
         pv = pv*results.multiplier.iloc[i]
     
     
-    st.write('Value of $100 invested with this strategy from ',test_start, ' to present: $',round(pv,2))
+    st.write('Value of \$100 invested with this strategy from ',test_start, ' to present: \$',round(pv,2))
