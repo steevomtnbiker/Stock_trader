@@ -203,3 +203,5 @@ if st.sidebar.button('Backtest!'):
     
     
     st.write('Value of \$100 invested with this strategy from ',test_start, ' to present: \$',round(pv,2))
+    
+    st.write(results)
