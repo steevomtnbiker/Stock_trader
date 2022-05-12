@@ -186,11 +186,11 @@ if st.sidebar.button('Backtest!'):
             model = LinearRegression()
             
             
-            model.fit(train[['below30']],train['change'])
+            model.fit(train[['rsi_lag1']],train['change'])
         
             df_predict = pd.DataFrame(test.iloc[0])
             df_predict = df_predict.transpose()
-            test['prediction'] = model.predict(df_predict[['rsi']])[0]
+            test['prediction'] = model.predict(df_predict[['rsi_lag1']])[0]
             results = pd.concat([results,test])
             
     results['growth_rate'] = np.where(results.prediction >= .0033333, results.change,0)
