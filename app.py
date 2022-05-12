@@ -193,7 +193,7 @@ if st.sidebar.button('Backtest!'):
             test['prediction'] = model.predict(df_predict[['rsi_lag1']])[0]
             results = pd.concat([results,test])
             
-    results['growth_rate'] = np.where(results.prediction >= .0033333, results.change,0)
+    results['growth_rate'] = np.where(results.prediction >= .0000001, results.change,0)
 
     results['multiplier'] = results.growth_rate + 1
     
