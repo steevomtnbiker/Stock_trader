@@ -190,7 +190,7 @@ if st.sidebar.button('Backtest!'):
         
             df_predict = pd.DataFrame(test.iloc[0])
             df_predict = df_predict.transpose()
-            test['prediction'] = model.predict(df_predict[['below30']])[0]
+            test['prediction'] = model.predict(df_predict[['rsi']])[0]
             results = pd.concat([results,test])
             
     results['growth_rate'] = np.where(results.prediction >= .0033333, results.change,0)
