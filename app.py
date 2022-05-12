@@ -65,13 +65,15 @@ class MyRESTClient(RESTClient):
         to = to if to else date.today()
 
         if market == 'crypto':
-            resp = self.crypto_aggregates(ticker, multiplier, timespan,
+            resp = self.get_aggs(ticker, multiplier, timespan,
                                           from_.strftime('%Y-%m-%d'), to.strftime('%Y-%m-%d'),
                                           limit=50000)
         elif market == 'stocks':
-            resp = self.stocks_equities_aggregates(ticker, multiplier, timespan,
+            
+            resp = self.get_aggs(ticker, multiplier, timespan,
                                           from_.strftime('%Y-%m-%d'), to.strftime('%Y-%m-%d'),
                                           limit=50000)
+            
             
         df = pd.DataFrame(resp.results)
         last_minute = 0
@@ -147,7 +149,19 @@ test_start = st.sidebar.date_input('Start of backtest data: ', date(2022,2,1))
 
 if st.sidebar.button('Backtest!'):
     
-    df = client.get_bars(market=market, ticker=ticker, from_=start_date)
+    df = client.get_bars(market=market, ticker=ticker.upper(), from_=start_date)
+    
+    # Denote 9:30 AM - 4 PM data
+    df['market_hours'] = np.where((df.date.dt.hour*60 + df.date.dt.minute >= 570) & (df.date.dt.hour < 16),1,0)
+
+    # Create minute number of day
+    temp = df[df.market_hours==1]
+    temp['date_date'] = temp.date.dt.date
+    temp = temp.sort_values(['date'])
+    temp['min_number'] = temp.groupby(['date_date']).cumcount()+1
+    temp = temp[['date','min_number']]
+    df = df.merge(temp,on='date',how='left')
+    df = df.sort_values(['date'])
     
     df['rsi'] = ta.rsi(df['close'],length=14)
     df['rsi_lag1'] = df.rsi.shift(1)
@@ -156,6 +170,9 @@ if st.sidebar.button('Backtest!'):
     df = df.dropna(subset=['rsi_lag1','close','change'])
 
     results = pd.DataFrame()
+    
+    # Just trade during normal market hours and not for the first minute (9:30 AM)
+    df = df[(df.market_hours == 1) & (df.min_number > 1)]
     
     for t in stqdm(range(len(df[(df.date>=pd.Timestamp(test_start))]))):
     
@@ -173,10 +190,11 @@ if st.sidebar.button('Backtest!'):
         
             df_predict = pd.DataFrame(test.iloc[0])
             df_predict = df_predict.transpose()
-            test['prediction'] = model.predict(df_predict[['rsi']])[0]
+            test['prediction'] = model.predict(df_predict[['below30']])[0]
             results = pd.concat([results,test])
             
     results['growth_rate'] = np.where(results.prediction >= .0033333, results.change,0)
+
     results['multiplier'] = results.growth_rate + 1
     
     pv = 100
