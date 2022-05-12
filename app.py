@@ -65,12 +65,12 @@ class MyRESTClient(RESTClient):
         to = to if to else date.today()
 
         if market == 'crypto':
-            resp = self.get_aggs(ticker, multiplier, timespan,
+            resp = self.crypto_aggregates(ticker, multiplier, timespan,
                                           from_.strftime('%Y-%m-%d'), to.strftime('%Y-%m-%d'),
                                           limit=50000)
         elif market == 'stocks':
             
-            resp = self.get_aggs(ticker, multiplier, timespan,
+            resp = self.stocks_equities_aggregates(ticker, multiplier, timespan,
                                           from_.strftime('%Y-%m-%d'), to.strftime('%Y-%m-%d'),
                                           limit=50000)
             
