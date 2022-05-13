@@ -122,7 +122,7 @@ ticker = st.sidebar.text_input("Ticker: ")
 start_date = st.sidebar.date_input('Start date of training data: ', date(2022,1,1))
 
 # How often (minutes) to retrain model
-train_freq = st.sidebar.number_input('How often to retrain model (minutes): ',value=1)
+train_freq = st.sidebar.number_input('How often to retrain model (minutes): ',value=1000)
 
 
 
@@ -147,6 +147,8 @@ if st.sidebar.button('Predict!'):
     prediction = model.predict(df_predict[['rsi_lag1']])[0]
     st.write('Predicted change in close price next minute from last: ',(prediction*100).round(3),'%')
 
+
+# Test date start
 test_start = st.sidebar.date_input('Start of backtest data: ', date(2022,2,1))
 
 
@@ -178,15 +180,16 @@ if st.sidebar.button('Backtest!'):
     df = df[(df.market_hours == 1) & (df.min_number > 1)]
         
     results = pd.DataFrame()
-
+    train, test = df[df.date < pd.Timestamp(test_start)], df[df.date >= pd.Timestamp(test_start)]
     # Loop through chunks    
-    for t in stqdm(range(0, len(df[df.date >= pd.Timestamp(test_start)]), train_freq)):   
+    for i in stqdm(range(0, len(test), train_freq)):   
     
-        train = df[df.date < pd.Timestamp(test_start) + pd.DateOffset(minutes=t)]
-    
-        test = df[(df.date >= pd.Timestamp(test_start) + pd.DateOffset(minutes=t)) & (df.date < pd.Timestamp(test_start) + pd.DateOffset(minutes=t+train_freq))]
+        if i > 0:
+            extra = test.iloc[i-train_freq:i]
+            train = pd.concat([train,extra])
+        test2 = test.iloc[i:i+train_freq]
         
-        if len(test) > 0:
+        if len(test2) > 0:
             
             # Train model
 
@@ -194,8 +197,8 @@ if st.sidebar.button('Backtest!'):
             
             model.fit(train[['rsi_lag1']],train['change'])
                
-            test['prediction'] = model.predict(test[['rsi_lag1']])
-            results = pd.concat([results,test])
+            test2 = test2.assign(prediction = model.predict(test2[['rsi_lag1']]))
+            results = pd.concat([results,test2])
             
     results['growth_rate'] = np.where(results.prediction >= .0000001, results.change,0)
 
@@ -219,8 +222,8 @@ if st.sidebar.button('Backtest!'):
     results['value_BH'] = initial_investment*results.multiplier_BH
     
     # Result
-    st.write('Value of \$100 with this strategy from ',test_start, ' to present: \$',round(pv,2))
-    st.write('Value of \$100 with buy and hold from ',test_start, ' to present: \$',round(pv_BH,2))
+    st.write('Value of \$100 with this strategy from ',test_start, ' to present: ',round(pv,2))
+    st.write('Value of \$100 with buy and hold from ',test_start, ' to present: ',round(pv_BH,2), ', based on starting price of ',start_price,' and ending price of ',end_price)
 
     
     # Chart
@@ -239,9 +242,9 @@ if st.sidebar.button('Backtest!'):
     title = ''
         
     chart = alt.Chart(results2).mark_line().encode(
-            x='date_date:T',
+            x='monthdate(date_date):T',
             y='v:Q',
-            color='strategy:N'
+            color='Strategy:N'
         ) 
         
     chart = alt.layer(chart , chart.mark_point(size=100, opacity=0, tooltip=alt.TooltipContent("data"))).properties(
@@ -259,7 +262,7 @@ if st.sidebar.button('Backtest!'):
         
     chart = alt.concat(chart,
             title=alt.TitleParams(
-            'Value over time',
+            'Backtest value over time for: '+ticker,
             color='lightgray',
             baseline='top',
             orient='top',
@@ -270,3 +273,6 @@ if st.sidebar.button('Backtest!'):
 
     
     st.write(results2)
+    
+        
+    
