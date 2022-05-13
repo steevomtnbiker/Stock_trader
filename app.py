@@ -173,28 +173,27 @@ if st.sidebar.button('Backtest!'):
     df['below30'] = np.where(df.rsi_lag1 < 30,1,0)
     df['change'] = (df.close - df.close.shift(1))/df.close.shift(1) 
     df = df.dropna(subset=['rsi_lag1','close','change'])
-
-    results = pd.DataFrame()
     
     # Just trade during normal market hours and not for the first minute (9:30 AM)
     df = df[(df.market_hours == 1) & (df.min_number > 1)]
-    
-    for t in stqdm(range(len(df[(df.date>=pd.Timestamp(test_start))]))):
+        
+    results = pd.DataFrame()
+
+    # Loop through chunks    
+    for t in range(0, len(df[df.date >= pd.Timestamp(test_start)]), train_freq):   
     
         train = df[df.date < pd.Timestamp(test_start) + pd.DateOffset(minutes=t)]
     
-        test = df[df.date == pd.Timestamp(test_start) + pd.DateOffset(minutes=t)]
+        test = df[(df.date >= pd.Timestamp(test_start) + pd.DateOffset(minutes=t)) & (df.date < pd.Timestamp(test_start) + pd.DateOffset(minutes=t+train_freq))]
         
         if len(test) > 0:
             
             # Train model
-            if t % train_freq == 0:
-                model = LinearRegression()
-                
-                model.fit(train[['rsi_lag1']],train['change'])
-        
-            df_predict = pd.DataFrame(test.iloc[0])
-            df_predict = df_predict.transpose()
+
+            model = LinearRegression()
+            
+            model.fit(train[['rsi_lag1']],train['change'])
+               
             test['prediction'] = model.predict(df_predict[['rsi_lag1']])[0]
             results = pd.concat([results,test])
             
@@ -220,8 +219,8 @@ if st.sidebar.button('Backtest!'):
     results['value_BH'] = initial_investment*results.multiplier_BH
     
     # Result
-    st.write('Value of \$100 invested with this strategy from ',test_start, ' to present: \$',round(pv,2))
-    st.write('Value of \$100 invested with buy and hold from ',test_start, ' to present: \$',round(pv_BH,2))
+    st.write('Value of \$100 with this strategy from ',test_start, ' to present: \$',round(pv,2))
+    st.write('Value of \$100 with buy and hold from ',test_start, ' to present: \$',round(pv_BH,2))
 
     
     # Chart
