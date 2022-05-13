@@ -116,7 +116,7 @@ st.title("Stock trading")
 market = st.sidebar.selectbox("Select market: ",['stocks','crypto'],index=0)
 
 # Ticker
-ticker = st.sidebar.text_input("Ticker: ")
+ticker = st.sidebar.text_input("Ticker: ", value='AAPL')
 
 # Dates
 start_date = st.sidebar.date_input('Start date of training data: ', date(2022,1,1))
@@ -124,27 +124,31 @@ start_date = st.sidebar.date_input('Start date of training data: ', date(2022,1,
 # How often (minutes) to retrain model
 train_freq = st.sidebar.number_input('How often to retrain model (minutes): ',value=1000)
 
-
+st.sidebar.write('Model configuration')
+market_hours = st.sidebar.radio('Market hours: ',('9:30 AM to 4 PM ET','24-7'))
+rsi_window = st.sidebar.number_input('RSI window: ',14)
+lag_number = st.sidebar.number_input('How far (minutes) back to lag RSI in model (must be at least 1): ',1)
+buy_threshold = st.sidebar.number_input("Buy threshold (% change): ",value=.0000001,format='%f')
 
 if st.sidebar.button('Predict!'):
     
     df = client.get_bars(market=market, ticker=ticker.upper(), from_=start_date)
         
-    df['rsi'] = ta.rsi(df['close'])
+    df['rsi'] = ta.rsi(df['close'],length=rsi_window)
     
-    df['rsi_lag1'] = df.rsi.shift(1)
+    df['rsi_lag'+str(lag_number)] = df.rsi.shift(lag_number)
     df['change'] = (df.close - df.close.shift(1))/df.close.shift(1) 
     
     # Train model
     model = LinearRegression()
     
-    df = df.dropna(subset=['rsi_lag1','close','change'])
+    df = df.dropna(subset=['rsi_lag'+str(lag_number),'close','change'])
     
-    model.fit(df[['rsi_lag1']],df['change'])
+    model.fit(df[['rsi_lag'+str(lag_number)]],df['change'])
 
     df_predict = pd.DataFrame(df.iloc[len(df)-1])
     df_predict = df_predict.transpose()
-    prediction = model.predict(df_predict[['rsi_lag1']])[0]
+    prediction = model.predict(df_predict[['rsi_lag'+str(lag_number)]])[0]
     st.write('Predicted change in close price next minute from last: ',(prediction*100).round(3),'%')
 
 
@@ -170,14 +174,11 @@ if st.sidebar.button('Backtest!'):
     df = df.sort_values(['date'])
     
     df['close_lag1'] = df.close.shift(1)
-    df['rsi'] = ta.rsi(df['close'],length=14)
-    df['rsi_lag1'] = df.rsi.shift(1)
-    df['below30'] = np.where(df.rsi_lag1 < 30,1,0)
+    df['rsi'] = ta.rsi(df['close'],length=rsi_window)
+    df['rsi_lag'+str(lag_number)] = df.rsi.shift(lag_number)
     df['change'] = (df.close - df.close.shift(1))/df.close.shift(1) 
-    df = df.dropna(subset=['rsi_lag1','close','change'])
-    
-    # Just trade during normal market hours and not for the first minute (9:30 AM)
-    df = df[(df.market_hours == 1) & (df.min_number > 1)]
+    df = df.dropna(subset=['rsi_lag'+str(lag_number),'close','change'])
+        
         
     results = pd.DataFrame()
     train, test = df[df.date < pd.Timestamp(test_start)], df[df.date >= pd.Timestamp(test_start)]
@@ -189,18 +190,27 @@ if st.sidebar.button('Backtest!'):
             train = pd.concat([train,extra])
         test2 = test.iloc[i:i+train_freq]
         
+        # Train only on trading hours
+        if market_hours == '9:30 AM to 4 PM ET':
+            train = train[(train.market_hours == 1) & (train.min_number > 1)]
+        
         if len(test2) > 0:
             
             # Train model
 
             model = LinearRegression()
             
-            model.fit(train[['rsi_lag1']],train['change'])
+            model.fit(train[['rsi_lag'+str(lag_number)]],train['change'])
                
-            test2 = test2.assign(prediction = model.predict(test2[['rsi_lag1']]))
+            test2 = test2.assign(prediction = model.predict(test2[['rsi_lag'+str(lag_number)]]))
             results = pd.concat([results,test2])
             
-    results['growth_rate'] = np.where(results.prediction >= .0000001, results.change,0)
+    # Decide to buy
+    results['growth_rate'] = np.where(results.prediction >= buy_threshold, results.change, 0)
+    
+    if market_hours == '9:30 AM to 4 PM ET':
+        # Just trade during normal market hours and not for the first minute (9:30 AM)
+        results['growth_rate'] = np.where((results.market_hours == 1) & (results.min_number > 1), results.growth_rate, 0)
 
     results['multiplier'] = results.growth_rate + 1
     
@@ -239,7 +249,7 @@ if st.sidebar.button('Backtest!'):
     title_font_size = 30
     width = 1100
     height = 900
-    title = ''
+    title = 'Model: ' + 'RSI window = ' + str(rsi_window) + ', Lag number = ' + str(lag_number) + ', Buy threshold = ' + str(buy_threshold) + ', Market hours = ' + str(market_hours) 
         
     chart = alt.Chart(results2).mark_line().encode(
             x='monthdate(date_date):T',
