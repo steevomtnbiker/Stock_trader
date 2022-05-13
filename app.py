@@ -180,7 +180,7 @@ if st.sidebar.button('Backtest!'):
     results = pd.DataFrame()
 
     # Loop through chunks    
-    for t in range(0, len(df[df.date >= pd.Timestamp(test_start)]), train_freq):   
+    for t in stqdm(range(0, len(df[df.date >= pd.Timestamp(test_start)]), train_freq)):   
     
         train = df[df.date < pd.Timestamp(test_start) + pd.DateOffset(minutes=t)]
     
