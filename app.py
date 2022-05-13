@@ -121,6 +121,9 @@ ticker = st.sidebar.text_input("Ticker: ")
 # Dates
 start_date = st.sidebar.date_input('Start date of training data: ', date(2022,1,1))
 
+# How often to retrain model
+train_freq = st.sidebar.number_input('How often to retrin model: ',value=1)
+
 
 
 if st.sidebar.button('Predict!'):
@@ -185,9 +188,10 @@ if st.sidebar.button('Backtest!'):
         if len(test) > 0:
             
             # Train model
-            model = LinearRegression()
-            
-            model.fit(train[['rsi_lag1']],train['change'])
+            if t % train_freq == 0:
+                model = LinearRegression()
+                
+                model.fit(train[['rsi_lag1']],train['change'])
         
             df_predict = pd.DataFrame(test.iloc[0])
             df_predict = df_predict.transpose()
