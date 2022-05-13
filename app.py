@@ -164,6 +164,7 @@ if st.sidebar.button('Backtest!'):
     df = df.merge(temp,on='date',how='left')
     df = df.sort_values(['date'])
     
+    df['close_lag1'] = df.close.shift(1)
     df['rsi'] = ta.rsi(df['close'],length=14)
     df['rsi_lag1'] = df.rsi.shift(1)
     df['below30'] = np.where(df.rsi_lag1 < 30,1,0)
@@ -197,21 +198,36 @@ if st.sidebar.button('Backtest!'):
 
     results['multiplier'] = results.growth_rate + 1
     
-    pv = 100
+    # Calculate value of investment
+    initial_investment = 100
+
+    # The strategy
+    pv = initial_investment
     results['value'] = pv
     for i in range(len(results)):
         pv = pv*results.multiplier.iloc[i]
         results['value'].iloc[i] = pv
-        
+    
+    # With buy and hold
+    start_price = results[results.date == results.date.min()]['close_lag1'].iloc[0]
+    end_price = results[results.date == results.date.max()]['close'].iloc[0]
+    pv_BH = initial_investment*(end_price/start_price)
+    results['multiplier_BH'] = results['close']/start_price
+    results['value_BH'] = initial_investment*results.multiplier_BH
+    
     # Result
     st.write('Value of \$100 invested with this strategy from ',test_start, ' to present: \$',round(pv,2))
-    
+    st.write('Value of \$100 invested with buy and hold from ',test_start, ' to present: \$',round(pv_BH,2))
+
     
     # Chart
     
     # Daily average 
     results['date_date'] = results.date.dt.date
-    results2 = results.groupby('date_date',as_index=False)['value'].mean()
+    results2 = results.groupby('date_date',as_index=False)['value','value_BH'].mean()
+    results2 = pd.melt(results2,id_vars=['date_date'],var_name=['Strategy'],value_name='v')
+    
+
     # Chart appearance
     axis_font_size = 25
     title_font_size = 30
@@ -221,7 +237,8 @@ if st.sidebar.button('Backtest!'):
         
     chart = alt.Chart(results2).mark_line().encode(
             x='date_date:T',
-            y='value:Q'
+            y='v:Q',
+            color=['strategy:N']
         ) 
         
     chart = alt.layer(chart , chart.mark_point(size=100, opacity=0, tooltip=alt.TooltipContent("data"))).properties(
