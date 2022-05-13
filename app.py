@@ -269,4 +269,4 @@ if st.sidebar.button('Backtest!'):
     st.altair_chart(chart)
 
     
-    st.write(results)
+    st.write(results2)
