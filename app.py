@@ -121,8 +121,8 @@ ticker = st.sidebar.text_input("Ticker: ")
 # Dates
 start_date = st.sidebar.date_input('Start date of training data: ', date(2022,1,1))
 
-# How often to retrain model
-train_freq = st.sidebar.number_input('How often to retrin model: ',value=1)
+# How often (minutes) to retrain model
+train_freq = st.sidebar.number_input('How often to retrain model (minutes): ',value=1)
 
 
 
@@ -144,7 +144,7 @@ if st.sidebar.button('Predict!'):
 
     df_predict = pd.DataFrame(df.iloc[len(df)-1])
     df_predict = df_predict.transpose()
-    prediction = model.predict(df_predict[['rsi']])[0]
+    prediction = model.predict(df_predict[['rsi_lag1']])[0]
     st.write('Predicted change in close price next minute from last: ',(prediction*100).round(3),'%')
 
 test_start = st.sidebar.date_input('Start of backtest data: ', date(2022,2,1))
@@ -194,7 +194,7 @@ if st.sidebar.button('Backtest!'):
             
             model.fit(train[['rsi_lag1']],train['change'])
                
-            test['prediction'] = model.predict(df_predict[['rsi_lag1']])[0]
+            test['prediction'] = model.predict(test[['rsi_lag1']])
             results = pd.concat([results,test])
             
     results['growth_rate'] = np.where(results.prediction >= .0000001, results.change,0)
