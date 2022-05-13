@@ -284,5 +284,7 @@ if st.sidebar.button('Backtest!'):
     
     st.write(results2)
     
+    st.download_button('Download data!', results.to_csv().encode('utf-8'),file_name='Stock trading results.csv',mime='text/csv')
+    
         
     
