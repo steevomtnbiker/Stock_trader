@@ -18,6 +18,7 @@ from urllib3.util.retry import Retry
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
 from stqdm import stqdm
+import altair as alt
 
 markets = ['crypto', 'stocks', 'fx']
 
@@ -124,7 +125,7 @@ start_date = st.sidebar.date_input('Start date of training data: ', date(2022,1,
 
 if st.sidebar.button('Predict!'):
     
-    df = client.get_bars(market=market, ticker=ticker, from_=start_date)
+    df = client.get_bars(market=market, ticker=ticker.upper(), from_=start_date)
         
     df['rsi'] = ta.rsi(df['close'])
     
@@ -151,8 +152,8 @@ if st.sidebar.button('Backtest!'):
     
     df = client.get_bars(market=market, ticker=ticker.upper(), from_=start_date)
     
-    # Denote 9:30 AM - 4 PM data
-    df['market_hours'] = np.where((df.date.dt.hour*60 + df.date.dt.minute >= 570) & (df.date.dt.hour < 16),1,0)
+    # Denote 9:30 AM - 4 PM data (2:30 PM to 9 PM UTC)
+    df['market_hours'] = np.where((df.date.dt.hour*60 + df.date.dt.minute >= 870) & (df.date.dt.hour < 21),1,0)
 
     # Create minute number of day
     temp = df[df.market_hours==1]
@@ -185,7 +186,6 @@ if st.sidebar.button('Backtest!'):
             # Train model
             model = LinearRegression()
             
-            
             model.fit(train[['rsi_lag1']],train['change'])
         
             df_predict = pd.DataFrame(test.iloc[0])
@@ -198,10 +198,55 @@ if st.sidebar.button('Backtest!'):
     results['multiplier'] = results.growth_rate + 1
     
     pv = 100
+    results['value'] = pv
     for i in range(len(results)):
         pv = pv*results.multiplier.iloc[i]
-    
-    
+        results['value'].iloc[i] = pv
+        
+    # Result
     st.write('Value of \$100 invested with this strategy from ',test_start, ' to present: \$',round(pv,2))
+    
+    
+    # Chart
+    
+    # Daily average 
+    results['date_date'] = results.date.dt.date
+    results2 = results.groupby('date_date',as_index=False)['value'].mean()
+    # Chart appearance
+    axis_font_size = 25
+    title_font_size = 30
+    width = 1100
+    height = 900
+    title = ''
+        
+    chart = alt.Chart(results2).mark_line().encode(
+            x='date_date:T',
+            y='value:Q'
+        ) 
+        
+    chart = alt.layer(chart , chart.mark_point(size=100, opacity=0, tooltip=alt.TooltipContent("data"))).properties(
+        title=alt.TitleParams(
+    title,
+    baseline='bottom',
+    orient='bottom',
+    anchor='middle',
+    fontWeight='normal',
+    fontSize=10
+        ),
+        width=width,
+        height=height)
+        
+        
+    chart = alt.concat(chart,
+            title=alt.TitleParams(
+            'Value over time',
+            color='lightgray',
+            baseline='top',
+            orient='top',
+            anchor='start'
+                    )).configure_axis(labelFontSize=axis_font_size,  
+                                      titleFontSize=axis_font_size).configure_title(fontSize=title_font_size)
+    st.altair_chart(chart)
+
     
     st.write(results)

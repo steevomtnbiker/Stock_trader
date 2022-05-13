@@ -9,3 +9,5 @@ requests
 urllib3
 sklearn
 stqdm
+altair
+
