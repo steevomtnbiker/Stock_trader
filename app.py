@@ -238,7 +238,7 @@ if st.sidebar.button('Backtest!'):
     chart = alt.Chart(results2).mark_line().encode(
             x='date_date:T',
             y='v:Q',
-            color=['strategy:N']
+            color='strategy:N'
         ) 
         
     chart = alt.layer(chart , chart.mark_point(size=100, opacity=0, tooltip=alt.TooltipContent("data"))).properties(
