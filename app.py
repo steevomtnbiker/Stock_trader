@@ -101,65 +101,9 @@ class MyRESTClient(RESTClient):
         return df
     
 
-
-
-
-client = MyRESTClient('xv1hEAplCjSiahoU11LP5ivLG8voopm4')
-
-
-
-
-
-st.title("Stock trading")
-
-# Market
-market = st.sidebar.selectbox("Select market: ",['stocks','crypto'],index=0)
-
-# Ticker
-ticker = st.sidebar.text_input("Ticker: ", value='AAPL')
-
-# Dates
-start_date = st.sidebar.date_input('Start date of training data: ', date(2022,1,1))
-
-# How often (minutes) to retrain model
-train_freq = st.sidebar.number_input('How often to retrain model (minutes): ',value=1000)
-
-st.sidebar.write('Model configuration')
-market_hours = st.sidebar.radio('Market hours: ',('9:30 AM to 4 PM ET','24-7'))
-rsi_window = st.sidebar.number_input('RSI window: ',14)
-lag_number = st.sidebar.number_input('How far (minutes) back to lag RSI in model (must be at least 1): ',1)
-buy_threshold = st.sidebar.number_input("Buy threshold (% change): ",value=.0000001,format='%f')
-
-if st.sidebar.button('Predict!'):
+def Run_backtest(market, ticker, start_date, test_start, test_end, lag_number, rsi_window, buy_threshold, market_hours, train_freq):
     
-    df = client.get_bars(market=market, ticker=ticker.upper(), from_=start_date)
-        
-    df['rsi'] = ta.rsi(df['close'],length=rsi_window)
-    
-    df['rsi_lag'+str(lag_number)] = df.rsi.shift(lag_number)
-    df['change'] = (df.close - df.close.shift(1))/df.close.shift(1) 
-    
-    # Train model
-    model = LinearRegression()
-    
-    df = df.dropna(subset=['rsi_lag'+str(lag_number),'close','change'])
-    
-    model.fit(df[['rsi_lag'+str(lag_number)]],df['change'])
-
-    df_predict = pd.DataFrame(df.iloc[len(df)-1])
-    df_predict = df_predict.transpose()
-    prediction = model.predict(df_predict[['rsi_lag'+str(lag_number)]])[0]
-    st.write('Predicted change in close price next minute from last: ',(prediction*100).round(3),'%')
-
-
-# Test date start
-test_start = st.sidebar.date_input('Start of backtest data: ', date(2022,2,1))
-
-
-
-if st.sidebar.button('Backtest!'):
-    
-    df = client.get_bars(market=market, ticker=ticker.upper(), from_=start_date)
+    df = client.get_bars(market=market, ticker=ticker.upper(), from_=start_date, to=test_end)
     
     # Denote 9:30 AM - 4 PM data (2:30 PM to 9 PM UTC)
     df['market_hours'] = np.where((df.date.dt.hour*60 + df.date.dt.minute >= 870) & (df.date.dt.hour < 21),1,0)
@@ -214,6 +158,15 @@ if st.sidebar.button('Backtest!'):
 
     results['multiplier'] = results.growth_rate + 1
     
+    # Random strategy
+    results['growth_rate_random'] = np.random.randint(0, 2, size=len(results))
+    results['growth_rate_random'] = np.where(results.growth_rate_random == 1,results.change,0)    
+    if market_hours == '9:30 AM to 4 PM ET':
+        # Just trade during normal market hours and not for the first minute (9:30 AM)
+        results['growth_rate_random'] = np.where((results.market_hours == 1) & (results.min_number > 1), results.growth_rate_random, 0)
+    results['multiplier_random'] = results.growth_rate_random + 1 
+
+    
     # Calculate value of investment
     initial_investment = 100
 
@@ -231,19 +184,22 @@ if st.sidebar.button('Backtest!'):
     results['multiplier_BH'] = results['close']/start_price
     results['value_BH'] = initial_investment*results.multiplier_BH
     
-    # Result
-    st.write('Value of \$100 with this strategy from ',test_start, ' to present: ',round(pv,2))
-    st.write('Value of \$100 with buy and hold from ',test_start, ' to present: ',round(pv_BH,2), ', based on starting price of ',start_price,' and ending price of ',end_price)
+    # Random strategy
+    pv_random = initial_investment
+    results['value_random'] = pv_random
+    for i in range(len(results)):
+        pv_random = pv_random*results.multiplier_random.iloc[i]
+        results['value_random'].iloc[i] = pv_random
 
-    
-    # Chart
-    
     # Daily average 
     results['date_date'] = results.date.dt.date
-    results2 = results.groupby('date_date',as_index=False)['value','value_BH'].mean()
+    results2 = results.groupby('date_date',as_index=False)['value','value_BH','value_random'].mean()
     results2 = pd.melt(results2,id_vars=['date_date'],var_name=['Strategy'],value_name='v')
     
+    return(results, results2, pv, pv_BH, pv_random, start_price, end_price)
 
+def Plot_daily_value(results2, lag_number, rsi_window, buy_threshold):
+    
     # Chart appearance
     axis_font_size = 25
     title_font_size = 30
@@ -279,6 +235,77 @@ if st.sidebar.button('Backtest!'):
             anchor='start'
                     )).configure_axis(labelFontSize=axis_font_size,  
                                       titleFontSize=axis_font_size).configure_title(fontSize=title_font_size)
+    
+    return(chart)
+
+
+client = MyRESTClient('xv1hEAplCjSiahoU11LP5ivLG8voopm4')
+
+
+
+
+
+st.title("Stock trading")
+
+# Market
+market = st.sidebar.selectbox("Select market: ",['stocks','crypto'],index=0)
+
+# Ticker
+ticker = st.sidebar.text_input("Ticker: ", value='AAPL')
+
+# Dates
+start_date = st.sidebar.date_input('Start date of training data: ', date(2022,1,1))
+
+# How often (minutes) to retrain model
+train_freq = st.sidebar.number_input('How often to retrain model (minutes): ',value=1000)
+
+st.sidebar.write('Model configuration')
+market_hours = st.sidebar.radio('Market hours: ',('9:30 AM to 4 PM ET','24-7'))
+rsi_window = st.sidebar.number_input('RSI window: ',14)
+lag_number = st.sidebar.number_input('How far (minutes) back to lag RSI in model (must be at least 1): ',1)
+buy_threshold = st.sidebar.number_input("Buy threshold (% change): ",value=.0000001,format='%f')
+
+if st.sidebar.button('Predict!'):
+    
+    df = client.get_bars(market=market, ticker=ticker.upper(), from_=start_date)
+        
+    df['rsi'] = ta.rsi(df['close'],length=rsi_window)
+    
+    df['rsi_lag'+str(lag_number)] = df.rsi.shift(lag_number)
+    df['change'] = (df.close - df.close.shift(1))/df.close.shift(1) 
+    
+    # Train model
+    model = LinearRegression()
+    
+    df = df.dropna(subset=['rsi_lag'+str(lag_number),'close','change'])
+    
+    model.fit(df[['rsi_lag'+str(lag_number)]],df['change'])
+
+    df_predict = pd.DataFrame(df.iloc[len(df)-1])
+    df_predict = df_predict.transpose()
+    prediction = model.predict(df_predict[['rsi_lag'+str(lag_number)]])[0]
+    st.write('Predicted change in close price next minute from last: ',(prediction*100).round(3),'%')
+
+
+# Test date start
+test_start = st.sidebar.date_input('Start of backtest data: ', date(2022,2,1))
+
+# Test date end
+test_end = st.sidebar.date_input('End of backtest data: ', date(2022,6,1))
+
+
+if st.sidebar.button('Backtest!'):
+    
+    results, results2, pv, pv_BH, pv_random, start_price, end_price = Run_backtest(market, ticker, start_date, test_start, test_end, lag_number, rsi_window, buy_threshold, market_hours, train_freq)
+           
+    # Result
+    st.write('Value of \$100 with this strategy from ',test_start, ' to present: ',round(pv,2))
+    st.write('Value of \$100 with buy and hold from ',test_start, ' to present: ',round(pv_BH,2), ', based on starting price of ',start_price,' and ending price of ',end_price)
+    st.write('Value of \$100 with random strategy from ',test_start, ' to present: ',round(pv_random,2))
+
+    
+    # Chart of daily average
+    chart = Plot_daily_value(results2, lag_number, rsi_window, buy_threshold)
     st.altair_chart(chart)
 
     
@@ -286,5 +313,25 @@ if st.sidebar.button('Backtest!'):
     
     st.download_button('Download data!', results.to_csv().encode('utf-8'),file_name='Stock trading results.csv',mime='text/csv')
     
-        
+# TO DO: Add in multiple backtests grouped together
+# if st.sidebar.button('Backtest!'):
+    
+#     results, results2, pv, pv_BH, pv_random, start_price, end_price = Run_backtest(market, ticker, start_date, test_start, test_end, lag_number, rsi_window, buy_threshold, market_hours, train_freq)
+           
+#     # Result
+#     st.write('Value of \$100 with this strategy from ',test_start, ' to present: ',round(pv,2))
+#     st.write('Value of \$100 with buy and hold from ',test_start, ' to present: ',round(pv_BH,2), ', based on starting price of ',start_price,' and ending price of ',end_price)
+#     st.write('Value of \$100 with random strategy from ',test_start, ' to present: ',round(pv_random,2))
+
+    
+#     # Chart of daily average
+#     chart = Plot_daily_value(results2, lag_number, rsi_window, buy_threshold)
+#     st.altair_chart(chart)
+
+    
+#     st.write(results2)
+    
+#     st.download_button('Download data!', results.to_csv().encode('utf-8'),file_name='Stock trading results.csv',mime='text/csv')
+    
+       
     
