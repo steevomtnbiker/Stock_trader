@@ -101,6 +101,88 @@ class MyRESTClient(RESTClient):
         return df
     
 
+def Run_backtestV0(market, ticker, test_start, test_end, lag_number, rsi_window, buy_threshold, market_hours):
+    
+    
+    df = client.get_bars(market=market, ticker=ticker.upper(), from_=test_start-pd.Timedelta(days=rsi_window), to=test_end)
+    
+    # Denote 9:30 AM - 4 PM data (2:30 PM to 9 PM UTC)
+    df['market_hours'] = np.where((df.date.dt.hour*60 + df.date.dt.minute >= 870) & (df.date.dt.hour < 21),1,0)
+
+    # Create minute number of day
+    temp = df[df.market_hours==1]
+    temp['date_date'] = temp.date.dt.date
+    temp = temp.sort_values(['date'])
+    temp['min_number'] = temp.groupby(['date_date']).cumcount()+1
+    temp = temp[['date','min_number']]
+    df = df.merge(temp,on='date',how='left')
+    df = df.sort_values(['date'])
+    
+    df['close_lag1'] = df.close.shift(1)
+    df['rsi'] = ta.rsi(df['close'],length=rsi_window)
+    df['rsi_lag'+str(lag_number)] = df.rsi.shift(lag_number)
+    df['change'] = (df.close - df.close.shift(1))/df.close.shift(1) 
+    df = df.dropna(subset=['rsi_lag'+str(lag_number),'close','change'])
+        
+    # Train only on trading hours
+    if market_hours == '9:30 AM to 4 PM ET':
+        df = df[(df.market_hours == 1) & (df.min_number > 1)]
+        
+    results = pd.DataFrame()
+    test = df[df.date >= pd.Timestamp(test_start)]
+    
+    
+    bought = 0
+    pva = 100
+    
+    for i in range(len(test)):
+        
+        if bought == 0:
+            
+            if test.rsi_lag1.iloc[i] < 30:
+                bought = 1
+                value0 = test.close.iloc[i]
+                
+                temp = pd.DataFrame()
+                temp['action'] = 'bought'
+                temp['price'] = value0
+                temp['time'] = test.date.iloc[i]
+                temp['value'] = pva
+                results = pd.concat([temp,results])
+    
+        else:
+            
+            growth = (test.close.iloc[i] - value0)/value0
+            
+            if growth >= buy_threshold:
+                
+                pva += growth*pva
+                bought = 0
+                
+                temp = pd.DataFrame()
+                temp['action'] = 'sold'
+                temp['price'] = test.close.iloc[i]
+                temp['time'] = test.date.iloc[i]
+                temp['value'] = pva
+                results = pd.concat([temp,results])
+                
+    # check at the end
+    if bought == 1:
+        
+        growth = (test.close.iloc[len(test)-1] - value0)/value0
+        pva += growth*pva
+        
+    # Daily average 
+    results['date_date'] = results.date.dt.date
+    results2 = results.groupby('date_date',as_index=False)['value'].mean()
+    results2['Strategy'] = 'Brent'
+        
+        
+    return(pva,results,results2)
+            
+    
+
+
 def Run_backtest(market, ticker, start_date, test_start, test_end, lag_number, rsi_window, buy_threshold, market_hours, train_freq):
     
     df = client.get_bars(market=market, ticker=ticker.upper(), from_=start_date, to=test_end)
@@ -126,6 +208,7 @@ def Run_backtest(market, ticker, start_date, test_start, test_end, lag_number, r
         
     results = pd.DataFrame()
     train, test = df[df.date < pd.Timestamp(test_start)], df[df.date >= pd.Timestamp(test_start)]
+    
     # Loop through chunks    
     for i in stqdm(range(0, len(test), train_freq)):   
     
@@ -151,6 +234,8 @@ def Run_backtest(market, ticker, start_date, test_start, test_end, lag_number, r
             
     # Decide to buy
     results['growth_rate'] = np.where(results.prediction >= buy_threshold, results.change, 0)
+    
+    
     
     if market_hours == '9:30 AM to 4 PM ET':
         # Just trade during normal market hours and not for the first minute (9:30 AM)
@@ -297,21 +382,24 @@ test_end = st.sidebar.date_input('End of backtest data: ', date(2022,6,1))
 if st.sidebar.button('Backtest!'):
     
     results, results2, pv, pv_BH, pv_random, start_price, end_price = Run_backtest(market, ticker, start_date, test_start, test_end, lag_number, rsi_window, buy_threshold, market_hours, train_freq)
-           
+    pvV0, V0logs, results2V0 =  Run_backtestV0(market, ticker, test_start, test_end, lag_number, rsi_window, buy_threshold, market_hours)
+    results2 = pd.concat([results2,results2V0])
+    results2 = results2.sort_values(['Strategy','date_date'])          
+    
     # Result
+    st.write('Value of \$100 with Brent strategy from ',test_start, ' to present: ',round(pvV0,2))
     st.write('Value of \$100 with this strategy from ',test_start, ' to present: ',round(pv,2))
     st.write('Value of \$100 with buy and hold from ',test_start, ' to present: ',round(pv_BH,2), ', based on starting price of ',start_price,' and ending price of ',end_price)
     st.write('Value of \$100 with random strategy from ',test_start, ' to present: ',round(pv_random,2))
-
     
+
     # Chart of daily average
     chart = Plot_daily_value(results2, lag_number, rsi_window, buy_threshold)
     st.altair_chart(chart)
-
+    
+    st.download_button('Download logs for Brent strategy!', V0logs.to_csv().encode('utf-8'),file_name='Stock trading results.csv',mime='text/csv')
     
     st.write(results2)
-    
-    st.download_button('Download data!', results.to_csv().encode('utf-8'),file_name='Stock trading results.csv',mime='text/csv')
     
 # TO DO: Add in multiple backtests grouped together
 # if st.sidebar.button('Backtest!'):
