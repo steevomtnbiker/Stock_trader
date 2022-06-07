@@ -135,19 +135,19 @@ def Run_backtestV0(market, ticker, test_start, test_end, lag_number, rsi_window,
     bought = 0
     pva = 100
     
-    for i in range(len(test)):
-        
+    
+    for i in stqdm(range(len(test))):
+        # TO DO: DEBUG THIS, WHY IT'S NOT SHOWING ANY RESULTS
         if bought == 0:
-            
-            if test.rsi_lag1.iloc[i] < 30:
+                        
+            if test['rsi_lag' + str(lag_number)].iloc[i] < 30:
+                                
                 bought = 1
                 value0 = test.close.iloc[i]
                 
-                temp = pd.DataFrame()
-                temp['action'] = 'bought'
-                temp['price'] = value0
-                temp['time'] = test.date.iloc[i]
-                temp['value'] = pva
+                temp = pd.DataFrame(['bought',value0,test.date.iloc[i],pva]).transpose()
+                temp.columns = ['action','price','date','v']
+                                
                 results = pd.concat([temp,results])
     
         else:
@@ -156,25 +156,29 @@ def Run_backtestV0(market, ticker, test_start, test_end, lag_number, rsi_window,
             
             if growth >= buy_threshold:
                 
+                
                 pva += growth*pva
                 bought = 0
                 
-                temp = pd.DataFrame()
-                temp['action'] = 'sold'
-                temp['price'] = test.close.iloc[i]
-                temp['time'] = test.date.iloc[i]
-                temp['value'] = pva
-                results = pd.concat([temp,results])
+                temp = pd.DataFrame(['sold',test.close.iloc[i],test.date.iloc[i],pva]).transpose()
+                temp.columns = ['action','price','date','v']
                 
+                results = pd.concat([temp,results])
+                                
     # check at the end
     if bought == 1:
         
         growth = (test.close.iloc[len(test)-1] - value0)/value0
         pva += growth*pva
         
+        temp = pd.DataFrame(['sold',test.close.iloc[len(test)-1],test.date.iloc[len(test)-1],pva]).transpose()
+        temp.columns = ['action','price','date','v']
+        results = pd.concat([temp,results])
+
+        
     # Daily average 
     results['date_date'] = results.date.dt.date
-    results2 = results.groupby('date_date',as_index=False)['value'].mean()
+    results2 = results.groupby('date_date',as_index=False)['v'].mean()
     results2['Strategy'] = 'Brent'
         
         
@@ -349,6 +353,7 @@ market_hours = st.sidebar.radio('Market hours: ',('9:30 AM to 4 PM ET','24-7'))
 rsi_window = st.sidebar.number_input('RSI window: ',14)
 lag_number = st.sidebar.number_input('How far (minutes) back to lag RSI in model (must be at least 1): ',1)
 buy_threshold = st.sidebar.number_input("Buy threshold (% change): ",value=.0000001,format='%f')
+Brent_threshold = st.sidebar.number_input("Brent's sell threshold (% change): ",value=.0033,format='%f')
 
 if st.sidebar.button('Predict!'):
     
@@ -382,7 +387,15 @@ test_end = st.sidebar.date_input('End of backtest data: ', date(2022,6,1))
 if st.sidebar.button('Backtest!'):
     
     results, results2, pv, pv_BH, pv_random, start_price, end_price = Run_backtest(market, ticker, start_date, test_start, test_end, lag_number, rsi_window, buy_threshold, market_hours, train_freq)
-    pvV0, V0logs, results2V0 =  Run_backtestV0(market, ticker, test_start, test_end, lag_number, rsi_window, buy_threshold, market_hours)
+    pvV0, V0logs, results2V0 =  Run_backtestV0(market, ticker, test_start, test_end, lag_number, rsi_window, Brent_threshold, market_hours)
+        
+    # Expand number of days in Brent strategy
+    temp = pd.DataFrame(results2[['date_date']]).drop_duplicates()
+    results2V0 = results2V0.merge(temp,on=['date_date'],how='outer')
+    results2V0 = results2V0.sort_values(['date_date'])
+    results2V0['v'] = np.where(results2V0.v.isna(),results2V0.v.ffill(),results2V0.v)
+    results2V0['Strategy'] = 'Brent'
+        
     results2 = pd.concat([results2,results2V0])
     results2 = results2.sort_values(['Strategy','date_date'])          
     
